@@ -14,6 +14,8 @@ import UIKit
 import CloudKit
 
 final class PrivateDatabaseManager: DatabaseManager {
+    var syncCompletion: (() -> Void)?
+    
     
     let container: CKContainer
     let database: CKDatabase

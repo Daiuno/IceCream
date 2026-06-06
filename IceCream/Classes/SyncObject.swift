@@ -107,6 +107,7 @@ extension SyncObject: Syncable {
             } else {
                 try! realm.commitWrite()
             }
+            print("CloudKit new record: \(object.description)")
         }
     }
     
@@ -117,6 +118,7 @@ extension SyncObject: Syncable {
                 // Not found in local realm database
                 return
             }
+            print("CloudKit delete record: \(object.description)")
             CreamAsset.deleteCreamAssetFile(with: recordID.recordName)
             realm.beginWrite()
             realm.delete(object)

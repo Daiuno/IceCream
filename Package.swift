@@ -1,4 +1,4 @@
-// swift-tools-version:5.1
+// swift-tools-version:5.6
 import PackageDescription
 
 let package = Package(
@@ -12,15 +12,18 @@ let package = Package(
             targets: ["IceCream"])
     ],
     dependencies: [
+        // Patched for Xcode 26.4 (realm-core d8f21f9); switch back when 10.54.7 ships.
         .package(
-            url: "https://github.com/realm/realm-swift",
-            from: "10.42.2"
+            url: "https://github.com/Daiuno/realm-swift.git",
+            branch: "manicemu"
         )
     ],
     targets: [
         .target(
             name: "IceCream",
-            dependencies: ["RealmSwift", "Realm"],
+            dependencies: [
+                .product(name: "RealmSwift", package: "realm-swift"),
+            ],
             path: "IceCream",
             sources: ["Classes"])
     ],

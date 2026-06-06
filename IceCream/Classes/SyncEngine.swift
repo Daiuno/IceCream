@@ -17,14 +17,24 @@ public final class SyncEngine {
     
     private let databaseManager: DatabaseManager
     
+    public var setupCompletion: ((Error?) -> Void)? = nil
+    
+    public var syncCompletion: (() -> Void)? = nil
+    
     public convenience init(objects: [Syncable], databaseScope: CKDatabase.Scope = .private, container: CKContainer = .default()) {
         switch databaseScope {
         case .private:
             let privateDatabaseManager = PrivateDatabaseManager(objects: objects, container: container)
             self.init(databaseManager: privateDatabaseManager)
+            privateDatabaseManager.syncCompletion = { [weak self] in
+                self?.syncCompletion?()
+            }
         case .public:
             let publicDatabaseManager = PublicDatabaseManager(objects: objects, container: container)
             self.init(databaseManager: publicDatabaseManager)
+            publicDatabaseManager.syncCompletion = { [weak self] in
+                self?.syncCompletion?()
+            }
         default:
             fatalError("Shared database scope is not supported yet")
         }
@@ -43,14 +53,14 @@ public final class SyncEngine {
             case .available:
                 self.databaseManager.registerLocalDatabase()
                 self.databaseManager.createCustomZonesIfAllowed()
-                self.databaseManager.fetchChangesInDatabase(nil)
+                self.databaseManager.fetchChangesInDatabase(setupCompletion)
                 self.databaseManager.resumeLongLivedOperationIfPossible()
                 self.databaseManager.startObservingRemoteChanges()
                 self.databaseManager.startObservingTermination()
                 self.databaseManager.createDatabaseSubscriptionIfHaveNot()
             case .noAccount, .restricted:
                 guard self.databaseManager is PublicDatabaseManager else { break }
-                self.databaseManager.fetchChangesInDatabase(nil)
+                self.databaseManager.fetchChangesInDatabase(setupCompletion)
                 self.databaseManager.resumeLongLivedOperationIfPossible()
                 self.databaseManager.startObservingRemoteChanges()
                 self.databaseManager.startObservingTermination()

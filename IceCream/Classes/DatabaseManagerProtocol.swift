@@ -17,6 +17,8 @@ protocol DatabaseManager: AnyObject {
     
     var syncObjects: [Syncable] { get }
     
+    var syncCompletion: (()->Void)? { get set }
+    
     init(objects: [Syncable], container: CKContainer)
     
     func prepare()
@@ -47,7 +49,10 @@ extension DatabaseManager {
         syncObjects.forEach {
             $0.pipeToEngine = { [weak self] recordsToStore, recordIDsToDelete in
                 guard let self = self else { return }
-                self.syncRecordsToCloudKit(recordsToStore: recordsToStore, recordIDsToDelete: recordIDsToDelete)
+                self.syncRecordsToCloudKit(recordsToStore: recordsToStore, recordIDsToDelete: recordIDsToDelete) { [weak self] error in
+                    print("Sync database \(error == nil ? "success" : "failed:\(error!)")")
+                    self?.syncCompletion?()
+                }
             }
         }
     }
