@@ -168,7 +168,10 @@ extension SyncObject: Syncable {
             self.notificationToken.flatMap { tokens = [$0] }
             
             realm.beginWrite()
-            objects.forEach({ realm.delete($0) })
+            objects.forEach { object in
+                CreamAsset.deleteCreamAssetFile(with: object.recordID.recordName)
+                realm.delete(object)
+            }
             do {
                 try realm.commitWrite(withoutNotifying: tokens)
             } catch {

@@ -122,6 +122,12 @@ extension DatabaseManager {
             
             switch ErrorHandler.shared.resultType(with: error) {
             case .success:
+                // CloudKit has accepted the deletions; drop local tombstones now
+                // instead of waiting for willTerminate or the next fetchChanges.
+                for recordID in recordIDsToDelete {
+                    guard let syncObject = self.syncObjects.first(where: { $0.zoneID == recordID.zoneID }) else { continue }
+                    syncObject.delete(recordID: recordID)
+                }
                 DispatchQueue.main.async {
                     completion?(nil)
                 }
