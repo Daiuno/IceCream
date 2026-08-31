@@ -28,6 +28,8 @@ public final class SyncObject<T, U, V, W> where T: Object & CKRecordConvertible 
     private let pendingUTypeRelationshipsWorker = PendingRelationshipsWorker<U>()
     private let pendingVTypeRelationshipsWorker = PendingRelationshipsWorker<V>()
     private let pendingWTypeRelationshipsWorker = PendingRelationshipsWorker<W>()
+    /// Inbound CloudKit records that must be dropped locally and removed from the cloud.
+    private var pendingUnsyncableRecordIDs: [CKRecord.ID] = []
     
     public init(
         realmConfiguration: Realm.Configuration = .defaultConfiguration,
@@ -94,6 +96,11 @@ extension SyncObject: Syncable {
                 print("There is something wrong with the converson from cloud record to local object")
                 return
             }
+            if !object.isSyncable {
+                CreamAsset.deleteCreamAssetFile(with: record.recordID.recordName)
+                self.pendingUnsyncableRecordIDs.append(record.recordID)
+                return
+            }
             self.pendingUTypeRelationshipsWorker.realm = realm
             self.pendingVTypeRelationshipsWorker.realm = realm
             self.pendingWTypeRelationshipsWorker.realm = realm
@@ -118,6 +125,8 @@ extension SyncObject: Syncable {
                 // Not found in local realm database
                 return
             }
+            // CloudKit removal of a local-only row must not wipe the on-device object.
+            guard object.isSyncable else { return }
             print("CloudKit delete record: \(object.description)")
             CreamAsset.deleteCreamAssetFile(with: recordID.recordName)
             realm.beginWrite()
@@ -141,7 +150,7 @@ extension SyncObject: Syncable {
                 case .initial(_):
                     break
                 case .update(let collection, _, let insertions, let modifications):
-                    let recordsToStore = (insertions + modifications).filter { $0 < collection.count }.map { collection[$0] }.filter{ !$0.isDeleted }.map { $0.record }
+                    let recordsToStore = (insertions + modifications).filter { $0 < collection.count }.map { collection[$0] }.filter { !$0.isDeleted && $0.isSyncable }.map { $0.record }
                     let recordIDsToDelete = modifications.filter { $0 < collection.count }.map { collection[$0] }.filter { $0.isDeleted }.map { $0.recordID }
                     
                     guard recordsToStore.count > 0 || recordIDsToDelete.count > 0 else { return }
@@ -157,6 +166,13 @@ extension SyncObject: Syncable {
         pendingUTypeRelationshipsWorker.resolvePendingListElements()
         pendingVTypeRelationshipsWorker.resolvePendingListElements()
         pendingWTypeRelationshipsWorker.resolvePendingListElements()
+        BackgroundWorker.shared.start { [weak self] in
+            guard let self else { return }
+            let ids = self.pendingUnsyncableRecordIDs
+            self.pendingUnsyncableRecordIDs.removeAll()
+            guard !ids.isEmpty else { return }
+            self.pipeToEngine?([], ids)
+        }
     }
     
     public func cleanUp() {
@@ -182,7 +198,7 @@ extension SyncObject: Syncable {
     
     public func pushLocalObjectsToCloudKit() {
         let realm = try! Realm(configuration: self.realmConfiguration)
-        let recordsToStore: [CKRecord] = realm.objects(T.self).filter { !$0.isDeleted }.map { $0.record }
+        let recordsToStore: [CKRecord] = realm.objects(T.self).filter { !$0.isDeleted && $0.isSyncable }.map { $0.record }
         pipeToEngine?(recordsToStore, [])
     }
     

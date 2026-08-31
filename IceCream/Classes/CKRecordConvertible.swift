@@ -19,9 +19,13 @@ public protocol CKRecordConvertible {
     var record: CKRecord { get }
 
     var isDeleted: Bool { get }
+    /// Local-only objects are neither uploaded nor merged from CloudKit.
+    var isSyncable: Bool { get }
 }
 
 extension CKRecordConvertible where Self: Object {
+
+    public var isSyncable: Bool { true }
     
     public static var databaseScope: CKDatabase.Scope {
         return .private
