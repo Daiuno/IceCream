@@ -67,7 +67,9 @@ public class CreamAsset: Object {
     /// - Returns: A CreamAsset if it was successful
     static func parse(from propName: String, record: CKRecord, asset: CKAsset) -> CreamAsset? {
         guard let url = asset.fileURL else { return nil }
-        return CreamAsset.create(objectID: record.recordID.recordName,
+        // Prefer the Realm primary key so recovered files share the same name as locally created ones.
+        let objectID = CKRecordName.primaryKey(fromRecordName: record.recordID.recordName)
+        return CreamAsset.create(objectID: objectID,
                                  propName: propName,
                                  url: url,
                                  shouldOverwrite: true)

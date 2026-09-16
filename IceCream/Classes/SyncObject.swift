@@ -121,14 +121,14 @@ extension SyncObject: Syncable {
     public func delete(recordID: CKRecord.ID) {
         BackgroundWorker.shared.start {
             let realm = try! Realm(configuration: self.realmConfiguration)
-            guard let object = realm.object(ofType: T.self, forPrimaryKey: T.primaryKeyForRecordID(recordID: recordID)) else {
+            guard let object = realm.object(ofType: T.self, forPrimaryKey: T.primaryKeyForRecordID(recordID: recordID, realm: realm)) else {
                 // Not found in local realm database
                 return
             }
             // CloudKit removal of a local-only row must not wipe the on-device object.
             guard object.isSyncable else { return }
             print("CloudKit delete record: \(object.description)")
-            CreamAsset.deleteCreamAssetFile(with: recordID.recordName)
+            Self.deleteCreamAssets(for: object, recordName: recordID.recordName)
             realm.beginWrite()
             realm.delete(object)
             if let token = self.notificationToken {
@@ -185,7 +185,7 @@ extension SyncObject: Syncable {
             
             realm.beginWrite()
             objects.forEach { object in
-                CreamAsset.deleteCreamAssetFile(with: object.recordID.recordName)
+                Self.deleteCreamAssets(for: object, recordName: object.recordID.recordName)
                 realm.delete(object)
             }
             do {
@@ -197,9 +197,26 @@ extension SyncObject: Syncable {
     }
     
     public func pushLocalObjectsToCloudKit() {
-        let realm = try! Realm(configuration: self.realmConfiguration)
-        let recordsToStore: [CKRecord] = realm.objects(T.self).filter { !$0.isDeleted && $0.isSyncable }.map { $0.record }
-        pipeToEngine?(recordsToStore, [])
+        // Zone-creation callbacks hop to the main queue. Building a CKRecord for every
+        // local object used to assert (and still walks every row), so do that off the
+        // UI thread. A fresh Realm on this queue keeps thread confinement intact.
+        let configuration = realmConfiguration
+        DispatchQueue.global(qos: .utility).async { [pipeToEngine] in
+            autoreleasepool {
+                let realm = try! Realm(configuration: configuration)
+                let recordsToStore: [CKRecord] = realm.objects(T.self).filter { !$0.isDeleted }.map { $0.record }
+                pipeToEngine?(recordsToStore, [])
+            }
+        }
+    }
+    
+    /// CreamAsset files are named with the Realm primary key at creation time. Encoded
+    /// CloudKit record names would otherwise leak those files on remote delete.
+    private static func deleteCreamAssets(for object: T, recordName: String) {
+        CreamAsset.deleteCreamAssetFile(with: recordName)
+        guard let pkProperty = object.objectSchema.primaryKeyProperty, pkProperty.type == .string,
+              let pk = object[pkProperty.name] as? String, pk != recordName else { return }
+        CreamAsset.deleteCreamAssetFile(with: pk)
     }
     
 }
