@@ -72,7 +72,7 @@ extension CKRecordRecoverable where Self: Object {
                     for reference in value {
                         if let objectClassName = prop.objectClassName,
                            let schema = realm.schema.objectSchema.first(where: { $0.className == objectClassName }),
-                           let primaryKeyValue = primaryKeyForRecordID(recordID: reference.recordID, schema: schema) as? AnyHashable {
+                           let primaryKeyValue = primaryKeyForRecordID(recordID: reference.recordID, schema: schema, realm: realm) as? AnyHashable {
                             if schema.className == U.className() {
                                 if let existObject = realm.object(ofType: U.self, forPrimaryKey: primaryKeyValue) {
                                     uList.append(existObject)
@@ -143,10 +143,10 @@ extension CKRecordRecoverable where Self: Object {
                     let ownerType = prop.objectClassName,
                     let schema = realm.schema.objectSchema.first(where: { $0.className == ownerType })
                 {
-                    primaryKeyForRecordID(recordID: owner.recordID, schema: schema).flatMap {
+                    primaryKeyForRecordID(recordID: owner.recordID, schema: schema, realm: realm).flatMap {
                         recordValue = realm.dynamicObject(ofType: ownerType, forPrimaryKey: $0)
                     }
-                    // Because we use the primaryKey as recordName when object converting to CKRecord
+                    // Record names may be encoded; primaryKeyForRecordID reverses that.
                 }
             default:
                 print("Other types will be supported in the future.")
@@ -163,16 +163,19 @@ extension CKRecordRecoverable where Self: Object {
     ///
     /// - Parameter recordID: the recordID that CloudKit sent to us
     /// - Returns: the specific value of primaryKey in Realm
-    static func primaryKeyForRecordID(recordID: CKRecord.ID, schema: ObjectSchema? = nil) -> Any? {
+    static func primaryKeyForRecordID(recordID: CKRecord.ID, schema: ObjectSchema? = nil, realm: Realm? = nil) -> Any? {
         let schema = schema ?? Self().objectSchema
-        guard let objectPrimaryKeyType = schema.primaryKeyProperty?.type else { return nil }
-        switch objectPrimaryKeyType {
+        guard let pkProperty = schema.primaryKeyProperty else { return nil }
+        switch pkProperty.type {
         case .string:
-            return recordID.recordName
+            return CKRecordName.resolveStringPrimaryKey(recordName: recordID.recordName,
+                                                        realm: realm,
+                                                        className: schema.className,
+                                                        primaryKeyProperty: pkProperty.name)
         case .int:
             return Int(recordID.recordName)
         default:
-            fatalError("The type of object primaryKey should be String or Int")
+            return nil
         }
     }
 }

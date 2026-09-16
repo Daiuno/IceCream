@@ -55,25 +55,19 @@ extension CKRecordConvertible where Self: Object {
         
         switch primaryKeyProperty.type {
         case .string:
-            if let primaryValueString = self[primaryKeyProperty.name] as? String {
-                // For more: https://developer.apple.com/documentation/cloudkit/ckrecord/id/1500975-init
-                assert(primaryValueString.allSatisfy({ $0.isASCII }), "Primary value for CKRecord name must contain only ASCII characters")
-                assert(primaryValueString.count <= 255, "Primary value for CKRecord name must not exceed 255 characters")
-                assert(!primaryValueString.starts(with: "_"), "Primary value for CKRecord name must not start with an underscore")
-                return CKRecord.ID(recordName: primaryValueString, zoneID: Self.zoneID)
-            } else {
-                assertionFailure("\(primaryKeyProperty.name)'s value should be String type")
-            }
+            let primaryValueString = (self[primaryKeyProperty.name] as? String) ?? ""
+            // ROM file names (and other user strings) are not valid CloudKit record
+            // names. Encode instead of asserting: Debug would crash the app, Release
+            // would still be rejected by CloudKit.
+            return CKRecord.ID(recordName: CKRecordName.make(primaryValueString), zoneID: Self.zoneID)
         case .int:
             if let primaryValueInt = self[primaryKeyProperty.name] as? Int {
                 return CKRecord.ID(recordName: "\(primaryValueInt)", zoneID: Self.zoneID)
-            } else {
-                assertionFailure("\(primaryKeyProperty.name)'s value should be Int type")
             }
+            return CKRecord.ID(recordName: CKRecordName.make(""), zoneID: Self.zoneID)
         default:
-            assertionFailure("Primary key should be String or Int")
+            return CKRecord.ID(recordName: CKRecordName.make(""), zoneID: Self.zoneID)
         }
-        fatalError("Should have a reasonable recordID")
     }
     
     // Simultaneously init CKRecord with zoneID and recordID, thanks to this guy: https://stackoverflow.com/questions/45429133/how-to-initialize-ckrecord-with-both-zoneid-and-recordid
@@ -123,20 +117,11 @@ extension CKRecordConvertible where Self: Object {
                         var referenceArray = [CKRecord.Reference]()
                         let wrappedArray = list._rlmCollection
                         for index in 0..<wrappedArray.count {
-                            guard let object = wrappedArray[index] as? Object, let primaryKey = object.objectSchema.primaryKeyProperty?.name else { continue }
-                            switch object.objectSchema.primaryKeyProperty?.type {
-                            case .string:
-                                if let primaryValueString = object[primaryKey] as? String, let obj = object as? CKRecordConvertible, !obj.isDeleted {
-                                    let referenceZoneID = CKRecordZone.ID(zoneName: "\(object.objectSchema.className)sZone", ownerName: CKCurrentUserDefaultName)
-                                    referenceArray.append(CKRecord.Reference(recordID: CKRecord.ID(recordName: primaryValueString, zoneID: referenceZoneID), action: .none))
-                                }
-                            case .int:
-                                if let primaryValueInt = object[primaryKey] as? Int, let obj = object as? CKRecordConvertible, !obj.isDeleted {
-                                    let referenceZoneID = CKRecordZone.ID(zoneName: "\(object.objectSchema.className)sZone", ownerName: CKCurrentUserDefaultName)
-                                    referenceArray.append(CKRecord.Reference(recordID: CKRecord.ID(recordName: "\(primaryValueInt)", zoneID: referenceZoneID), action: .none))
-                                }
-                            default:
-                                break
+                            guard let object = wrappedArray[index] as? Object else { continue }
+                            // Use the child's own recordID so List references share the same
+                            // CloudKit-safe encoding as the standalone record.
+                            if let obj = object as? CKRecordConvertible, !obj.isDeleted {
+                                referenceArray.append(CKRecord.Reference(recordID: obj.recordID, action: .none))
                             }
                         }
                         r[prop.name] = referenceArray as CKRecordValue
