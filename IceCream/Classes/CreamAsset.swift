@@ -157,9 +157,19 @@ public class CreamAsset: Object {
 }
 
 extension CreamAsset {
+    /// Optional root that replaces `Library/CreamAsset` (Apple TV keeps assets under per-mode cache roots).
+    /// Leave nil to keep the default location.
+    public static var customRootURL: URL? = nil
+    
     /// The default path for the storing of CreamAsset. That is:
     /// xxx/Library/CreamAsset/
     public static func creamAssetDefaultURL() -> URL {
+        if let customRootURL {
+            if !FileManager.default.fileExists(atPath: customRootURL.path) {
+                try? FileManager.default.createDirectory(at: customRootURL, withIntermediateDirectories: true, attributes: nil)
+            }
+            return customRootURL
+        }
         let documentDir = try! FileManager.default.url(for: .libraryDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
         let commonAssetPath = documentDir.appendingPathComponent(className())
         if !FileManager.default.fileExists(atPath: commonAssetPath.path) {

@@ -13,6 +13,19 @@ public protocol CKRecordRecoverable {
 }
 
 extension CKRecordRecoverable where Self: Object {
+    /// Rebuild an unmanaged object from a record that did not come from CloudKit (e.g. a device-to-device transfer).
+    /// List elements of `U` / `V` / `W` are linked only when they already exist in `realm`, so apply child records first.
+    public static func object<U: Object, V: Object, W: Object>(from record: CKRecord,
+                                                               realm: Realm,
+                                                               listElementTypes: (U.Type, V.Type, W.Type)) -> Self? {
+        parseFromRecord(record: record,
+                        realm: realm,
+                        notificationToken: nil,
+                        pendingUTypeRelationshipsWorker: PendingRelationshipsWorker<U>(),
+                        pendingVTypeRelationshipsWorker: PendingRelationshipsWorker<V>(),
+                        pendingWTypeRelationshipsWorker: PendingRelationshipsWorker<W>())
+    }
+    
     static func parseFromRecord<U: Object, V: Object, W: Object>(
         record: CKRecord,
         realm: Realm,
